@@ -10,7 +10,7 @@
 
 **File:** `lucenbar-lite-1.0.0.plasmoid` from https://github.com/JangMan-J/lucenbar/releases/tag/v1.0.0
 
-**Icon:** `docs/lucenbar-icon-256.png` (transparent, rendered from `contents/icons/lucenbar.svg`).
+**Icon:** `docs/lucenbar-icon-tile-512.png` (opaque dark tile; the store shows logos on its own background). Transparent alternative: `docs/lucenbar-icon-256.png`.
 
 **Tags:** ai, quota, usage, codex, claude, gemini, panel, plasma6
 
