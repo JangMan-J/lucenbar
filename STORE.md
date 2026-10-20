@@ -8,11 +8,13 @@
 
 **Version:** 1.0.0
 
-**File:** `dist/lucenbar-lite-1.0.0.plasmoid`
+**File:** `lucenbar-lite-1.0.0.plasmoid` from https://github.com/JangMan-J/lucenbar/releases/tag/v1.0.0
 
 **Icon:** `docs/lucenbar-icon-256.png` (transparent, rendered from `contents/icons/lucenbar.svg`).
 
-**Tags:** ai, quota, usage, codex, claude, gemini, panel
+**Tags:** ai, quota, usage, codex, claude, gemini, panel, plasma6
+
+**Source / homepage:** https://github.com/JangMan-J/lucenbar
 
 ## Summary
 
@@ -32,7 +34,7 @@ LucenBar Lite shows how much of your AI provider quota you have left, directly i
 
 **Credits:** LucenBar Lite is based on CodexBar Plasma (https://github.com/Lucenx9/codexbar-plasma) by Lucenx9, who wrote most of the code, the design, and the translations. If you want diagnostics, cost history, sessions, or multiple accounts, use the original: https://store.kde.org/p/2370789/
 
-This fork removes those features and adds rings and logo meters, drag-to-reorder, and native login for Antigravity, Grok, and Radius. It is not maintained or endorsed by Lucenx9 or the CodexBar authors; please report problems here, not upstream.
+This fork removes those features and adds rings and logo meters, drag-to-reorder, and native login for Antigravity, Grok, and Radius. It is not maintained or endorsed by Lucenx9 or the CodexBar authors; please report problems at https://github.com/JangMan-J/lucenbar/issues, not upstream.
 
 CodexBar CLI and most provider icons: CodexBar by Peter Steinberger (MIT). Poe icon: SVG Stack (CC BY 4.0).
 
