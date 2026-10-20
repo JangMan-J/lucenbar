@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+      https://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <entry name="usageCache" type="String">
+      <label>Redacted last-known quota cache for the current configuration.</label>
+      <default></default>
+    </entry>
+    <entry name="commandPath" type="String">
+      <label>Path to the codexbar command.</label>
+      <default>codexbar</default>
+    </entry>
+    <entry name="refreshOnOpen" type="Bool">
+      <label>Refresh quota data when opening the popup.</label>
+      <default>true</default>
+    </entry>
+    <entry name="privacyMode" type="Bool">
+      <label>Hide personal information in the widget.</label>
+      <default>false</default>
+    </entry>
+    <entry name="showPopupPace" type="Bool">
+      <label>Show pace forecasts in the popup.</label>
+      <default>true</default>
+    </entry>
+    <entry name="showPopupCredits" type="Bool">
+      <label>Show credits and extra usage in the popup.</label>
+      <default>true</default>
+    </entry>
+    <entry name="showPopupProviderDetails" type="Bool">
+      <label>Show provider detail rows and charts in the popup.</label>
+      <default>true</default>
+    </entry>
+    <entry name="refreshInterval" type="Int">
+      <label>Refresh interval in seconds.</label>
+      <default>300</default>
+      <min>0</min>
+      <max>86400</max>
+    </entry>
+    <entry name="includeStatus" type="Bool">
+      <label>Fetch provider service status.</label>
+      <default>false</default>
+    </entry>
+    <entry name="usageBarsShowUsed" type="Bool">
+      <label>Show usage bars as percent used instead of percent left.</label>
+      <default>false</default>
+    </entry>
+    <entry name="showQuotaWarningMarkers" type="Bool">
+      <label>Show quota warning indicators on usage meters.</label>
+      <default>true</default>
+    </entry>
+    <entry name="quotaWarningPercent" type="Int">
+      <label>Used percent that raises a quota warning.</label>
+      <default>80</default>
+      <min>1</min>
+      <max>99</max>
+    </entry>
+    <entry name="quotaCriticalPercent" type="Int">
+      <label>Used percent that raises a critical quota warning.</label>
+      <default>95</default>
+      <min>1</min>
+      <max>100</max>
+    </entry>
+    <entry name="enableNotifications" type="Bool">
+      <label>Enable Plasma notifications.</label>
+      <default>true</default>
+    </entry>
+    <entry name="notifyStatusIncidents" type="Bool">
+      <label>Notify when provider status incidents appear or change.</label>
+      <default>false</default>
+    </entry>
+    <entry name="notifyQuotaWarnings" type="Bool">
+      <label>Notify when usage crosses quota warning thresholds.</label>
+      <default>true</default>
+    </entry>
+    <entry name="notifyPredictivePaceWarnings" type="Bool">
+      <label>Notify when CLI pace data predicts quota exhaustion before reset.</label>
+      <default>false</default>
+    </entry>
+    <entry name="notifyLimitResets" type="Bool">
+      <label>Notify when a heavily used limit resets back to empty.</label>
+      <default>false</default>
+    </entry>
+    <entry name="cliAutomaticUpdates" type="Bool">
+      <label>Automatically update the selected widget-managed CLI daily.</label>
+      <default>false</default>
+    </entry>
+    <entry name="menuBarDisplayMode" type="String">
+      <label>Panel text display mode.</label>
+      <default>percent</default>
+    </entry>
+    <entry name="showPopupTabLabels" type="Bool">
+      <label>Show text labels in the popup tab bar.</label>
+      <default>true</default>
+    </entry>
+    <entry name="providerOrder" type="String">
+      <label>Ordered provider identifiers used by the widget.</label>
+      <default></default>
+    </entry>
+    <entry name="resetTimesShowAbsolute" type="Bool">
+      <label>Show reset times as absolute local times.</label>
+      <default>false</default>
+    </entry>
+    <entry name="showProviderIconsInPanel" type="Bool">
+      <label>Show each provider's logo beside its panel meter.</label>
+      <default>true</default>
+    </entry>
+    <entry name="panelThickness" type="Int">
+      <label>Measured panel thickness in pixels, written by the widget so the settings preview matches.</label>
+      <default>0</default>
+    </entry>
+    <entry name="panelMeterScale" type="Double">
+      <label>Indicator size as a share of the panel thickness (0.5 to 1).</label>
+      <default>0.75</default>
+    </entry>
+    <entry name="panelMeterStyle" type="String">
+      <label>Panel meter shape: bars or rings.</label>
+      <default>bars</default>
+    </entry>
+    <entry name="showPercentInPanel" type="Bool">
+      <label>Show the selected usage text in the panel.</label>
+      <default>false</default>
+    </entry>
+    <entry name="showMultiProviderInPanel" type="Bool">
+      <label>Show provider meters in the panel.</label>
+      <default>true</default>
+    </entry>
+    <entry name="panelQuotaLane" type="String">
+      <label>Panel quota: auto shows primary and secondary meters with automatic text; explicit lanes show one quota.</label>
+      <default>auto</default>
+    </entry>
+    <entry name="panelProviderIDs" type="String">
+      <label>Comma-separated provider ids shown in the panel; empty shows every enabled provider.</label>
+      <default></default>
+    </entry>
+    <entry name="autoSelectProvider" type="Bool">
+      <label>Auto-select the highest-usage provider.</label>
+      <default>false</default>
+    </entry>
+    <entry name="overviewProviderIDs" type="String">
+      <label>Comma-separated provider ids shown in the Overview tab.</label>
+      <default></default>
+    </entry>
+    <entry name="showCreditsInPanel" type="Bool">
+      <label>Show credits in the panel when available.</label>
+      <default>false</default>
+    </entry>
+    <entry name="providerDetectionCache" type="String">
+      <label>Last provider detection result with its timestamp, so the Providers page opens without rescanning.</label>
+      <default></default>
+    </entry>
+    <entry name="providerSettingsFocus" type="String">
+      <label>Provider the popup asked the settings dialog to open on; cleared once used.</label>
+      <default></default>
+    </entry>
+    <entry name="providerConfigRevision" type="Int">
+      <label>Internal revision bumped when provider enablement changes.</label>
+      <default>0</default>
+    </entry>
+  </group>
+</kcfg>

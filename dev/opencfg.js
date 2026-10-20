@@ -1,0 +1,1 @@
+for (var i in panels()) { var p = panels()[i]; if (p.id != 235) continue; for (var j in p.widgetIds) { var w = p.widgetById(p.widgetIds[j]); if (w.type === "io.github.jangmanj.lucenbarlite") w.showConfigurationInterface(); } }

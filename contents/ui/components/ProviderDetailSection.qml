@@ -1,0 +1,222 @@
+import QtQuick
+import QtQuick.Layouts
+import org.kde.plasma.components as PlasmaComponents
+import org.kde.kirigami as Kirigami
+
+ColumnLayout {
+    id: detailSection
+
+    required property var applet
+    required property var providerData
+    required property var modelData
+
+    readonly property var sectionData: modelData
+    readonly property var chartData: sectionData.chart || null
+    readonly property var chartPoints: chartData ? chartData.points : []
+    readonly property color accent: applet.providerReadableColor(
+        providerData ? providerData.provider : "",
+        Kirigami.Theme.backgroundColor)
+
+    Layout.fillWidth: true
+    spacing: Kirigami.Units.smallSpacing / 2
+
+    HoverHandler { id: sectionHover }
+
+    RowLayout {
+        visible: detailSection.sectionData.title.length > 0
+        Layout.fillWidth: true
+
+        PlainHeading {
+            id: sectionTitle
+            text: detailSection.sectionData.title
+            level: 4
+            type: Kirigami.Heading.Type.Primary
+            Layout.fillWidth: true
+            elide: Text.ElideRight
+
+            HoverHandler { id: sectionTitleHover }
+
+            PlainToolTip {
+                visible: sectionTitle.truncated && sectionTitleHover.hovered
+                plainText: sectionTitle.text
+            }
+        }
+
+    }
+
+    Repeater {
+        model: detailSection.sectionData.rows
+
+        delegate: ColumnLayout {
+            id: detailEntry
+
+            required property var modelData
+            readonly property var progress: detailEntry.modelData.progress || null
+
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing / 2
+
+            Item {
+                id: detailRow
+
+                Layout.fillWidth: true
+                implicitWidth: detailLabel.implicitWidth + Kirigami.Units.smallSpacing + detailValues.implicitWidth
+                implicitHeight: Math.max(detailLabel.implicitHeight, detailValues.implicitHeight)
+
+                PlainPlasmaLabel {
+                    id: detailLabel
+
+                    text: detailEntry.modelData.label
+                    opacity: detailSection.applet.secondaryTextOpacity
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    width: Math.max(0, parent.width - detailValues.width - Kirigami.Units.smallSpacing)
+                    elide: Text.ElideRight
+
+                    HoverHandler { id: detailLabelHover }
+
+                    PlainToolTip {
+                        visible: detailLabel.truncated && detailLabelHover.hovered
+                        plainText: detailLabel.text
+                    }
+                }
+
+                ColumnLayout {
+                    id: detailValues
+
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    // The plain Item owns geometry; width-dependent layout hints recurse.
+                    width: Math.min(implicitWidth, detailRow.width / 2)
+                    spacing: 0
+
+                    PlainPlasmaLabel {
+                        id: detailValue
+                        text: detailEntry.modelData.value
+                        opacity: detailSection.applet.valueTextOpacity
+                        font.weight: Font.Medium
+                        horizontalAlignment: Text.AlignRight
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        Layout.alignment: Qt.AlignRight
+                        elide: Text.ElideRight
+
+                        HoverHandler { id: detailValueHover }
+
+                        PlainToolTip {
+                            visible: detailValue.truncated && detailValueHover.hovered
+                            plainText: detailValue.text
+                        }
+                    }
+
+                    PlainPlasmaLabel {
+                        id: detailSecondaryValue
+                        visible: detailEntry.modelData.secondaryValue.length > 0
+                        text: detailEntry.modelData.secondaryValue
+                        opacity: detailSection.applet.secondaryTextOpacity
+                        font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                        horizontalAlignment: Text.AlignRight
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        Layout.alignment: Qt.AlignRight
+                        elide: Text.ElideRight
+
+                        HoverHandler { id: detailSecondaryValueHover }
+
+                        PlainToolTip {
+                            visible: detailSecondaryValue.truncated && detailSecondaryValueHover.hovered
+                            plainText: detailSecondaryValue.text
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                objectName: "detailProgressMeter"
+
+                visible: detailEntry.progress !== null
+                Layout.fillWidth: true
+                Layout.preferredHeight: detailSection.applet.compactMeterTrackHeight
+                Layout.bottomMargin: Kirigami.Units.smallSpacing / 2
+                radius: height / 2
+                color: detailSection.applet.withAlpha(Kirigami.Theme.textColor, 0.1)
+                clip: true
+
+                Rectangle {
+                    objectName: "detailProgressFill"
+
+                    readonly property real fraction: detailEntry.progress ? detailEntry.progress.fraction : 0
+
+                    width: fraction <= 0 ? 0 : Math.max(parent.height, parent.width * fraction)
+                    height: parent.height
+                    radius: parent.radius
+                    color: detailSection.accent
+                }
+            }
+        }
+    }
+
+    Item {
+        id: chartHeading
+
+        visible: detailSection.chartData
+            && (detailSection.chartData.title.length > 0 || detailSection.chartData.unit.length > 0)
+        Layout.fillWidth: true
+        implicitWidth: chartTitle.implicitWidth + Kirigami.Units.smallSpacing + chartUnit.implicitWidth
+        implicitHeight: Math.max(chartTitle.implicitHeight, chartUnit.implicitHeight)
+
+        PlainPlasmaLabel {
+            id: chartTitle
+
+            text: detailSection.chartData ? detailSection.chartData.title : ""
+            opacity: detailSection.applet.secondaryTextOpacity
+            font.weight: Font.DemiBold
+            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            width: Math.max(0, parent.width - chartUnit.width
+                - (chartUnit.visible ? Kirigami.Units.smallSpacing : 0))
+            elide: Text.ElideRight
+
+            HoverHandler { id: chartTitleHover }
+
+            PlainToolTip {
+                visible: chartTitle.truncated && chartTitleHover.hovered
+                plainText: chartTitle.text
+            }
+        }
+
+        PlainPlasmaLabel {
+            id: chartUnit
+
+            visible: detailSection.chartData && detailSection.chartData.unit.length > 0
+            text: detailSection.chartData ? detailSection.chartData.unit : ""
+            opacity: detailSection.applet.secondaryTextOpacity
+            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+            horizontalAlignment: Text.AlignRight
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            width: Math.min(implicitWidth, chartHeading.width / 2)
+            elide: Text.ElideRight
+
+            HoverHandler { id: chartUnitHover }
+
+            PlainToolTip {
+                visible: chartUnit.truncated && chartUnitHover.hovered
+                plainText: chartUnit.text
+            }
+        }
+    }
+
+    InteractiveChart {
+        visible: detailSection.chartData !== null
+        applet: detailSection.applet
+        points: detailSection.chartPoints
+        accent: detailSection.accent
+        kind: detailSection.chartData ? detailSection.chartData.kind : "bar"
+        valueSuffix: detailSection.chartData ? detailSection.chartData.unit : ""
+        accessibleTitle: detailSection.chartData && detailSection.chartData.title.length > 0
+            ? detailSection.chartData.title
+            : i18n("Usage chart")
+    }
+}

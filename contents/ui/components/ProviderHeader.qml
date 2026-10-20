@@ -1,0 +1,244 @@
+import QtQuick
+import QtQuick.Layouts
+import org.kde.kirigami as Kirigami
+import "../ThemeContrast.js" as ThemeContrast
+
+RowLayout {
+    id: providerHeaderRow
+
+    required property var applet
+    required property var providerData
+    readonly property bool hasAccount: providerData
+        && providerData.account && providerData.account.length > 0
+    readonly property bool hasPlan: providerData
+        && providerData.planText && providerData.planText.length > 0
+    readonly property color brandAccent: applet.providerColor(providerData ? providerData.provider : "")
+    readonly property color accent: applet.providerReadableColor(
+        providerData ? providerData.provider : "",
+        Kirigami.Theme.backgroundColor)
+
+    Layout.fillWidth: true
+    Layout.rightMargin: Kirigami.Units.smallSpacing
+    spacing: Kirigami.Units.largeSpacing
+
+    Rectangle {
+        id: providerIdentitySurface
+
+        Layout.alignment: Qt.AlignTop
+        Layout.preferredWidth: Math.round(Kirigami.Units.iconSizes.medium * 1.25) + Kirigami.Units.smallSpacing * 2
+        Layout.preferredHeight: Layout.preferredWidth
+        radius: providerHeaderRow.applet.nestedSurfaceRadius
+        color: providerHeaderRow.applet.withAlpha(providerHeaderRow.brandAccent, 0.12)
+        border.width: 1
+        border.color: providerHeaderRow.applet.withAlpha(Kirigami.Theme.textColor, 0.1)
+
+        readonly property bool shownInPanel: providerHeaderRow.providerData
+            ? providerHeaderRow.applet.panelShowsProvider(providerHeaderRow.providerData.provider) : true
+        opacity: shownInPanel ? 1 : 0.35
+
+        MouseArea {
+            id: providerHeaderIconMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            enabled: providerHeaderRow.providerData ? true : false
+            onClicked: providerHeaderRow.applet.togglePanelProvider(providerHeaderRow.providerData.provider)
+
+            PlainToolTip {
+                visible: providerHeaderIconMouse.containsMouse
+                plainText: providerIdentitySurface.shownInPanel
+                    ? i18n("Shown in the panel. Click to hide.") : i18n("Hidden from the panel. Click to show.")
+            }
+        }
+
+        Kirigami.Icon {
+            id: providerHeaderIcon
+
+            anchors.centerIn: parent
+            source: providerHeaderRow.providerData
+                ? providerHeaderRow.applet.providerIconSource(providerHeaderRow.providerData.provider)
+                : "view-statistics-symbolic"
+            fallback: "view-statistics"
+            isMask: providerHeaderRow.providerData
+                ? providerHeaderRow.applet.providerIconIsMask(providerHeaderRow.providerData.provider)
+                : true
+            color: providerHeaderRow.accent
+            width: Math.round(Kirigami.Units.iconSizes.medium * 1.25)
+            height: Math.round(Kirigami.Units.iconSizes.medium * 1.25)
+        }
+    }
+
+    ColumnLayout {
+        Layout.fillWidth: true
+        spacing: Kirigami.Units.smallSpacing / 2
+
+        RowLayout {
+            id: providerTitleRow
+
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+
+            PlainHeading {
+                id: providerTitleLabel
+
+                text: providerHeaderRow.providerData ? providerHeaderRow.providerData.title : ""
+                level: 2
+                type: Kirigami.Heading.Type.Primary
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+
+                HoverHandler {
+                    id: providerTitleHover
+                }
+
+                PlainToolTip {
+                    parent: providerTitleLabel
+                    visible: providerTitleLabel.truncated && providerTitleHover.hovered
+                    plainText: providerTitleLabel.text
+                }
+            }
+
+            // The popup states the incident in a pill directly below this
+            // header, and that text always names the severity, so the badge
+            // is only a fallback for an incident that has no pill text.
+            Rectangle {
+                id: providerStatusBadge
+
+                visible: providerHeaderRow.providerData
+                    && providerHeaderRow.providerData.hasIncident
+                    && providerHeaderRow.providerData.statusKnown !== false
+                    && !(providerHeaderRow.providerData.status
+                        && providerHeaderRow.providerData.status.length > 0)
+                Layout.preferredWidth: providerStatusBadgeLabel.implicitWidth + Kirigami.Units.smallSpacing * 2
+                Layout.preferredHeight: Math.max(Kirigami.Units.gridUnit * 1.25,
+                    providerStatusBadgeLabel.implicitHeight + Kirigami.Units.smallSpacing)
+                radius: height / 2
+                color: providerHeaderRow.providerData
+                    ? providerHeaderRow.applet.statusBadgeColor(providerHeaderRow.providerData.statusSeverity)
+                    : "transparent"
+
+                PlainPlasmaLabel {
+                    id: providerStatusBadgeLabel
+
+                    anchors.centerIn: parent
+                    text: providerHeaderRow.providerData
+                        ? providerHeaderRow.applet.statusBadgeText(providerHeaderRow.providerData.statusSeverity)
+                        : ""
+                    color: ThemeContrast.readableTextColor(Kirigami.Theme.textColor, providerStatusBadge.color)
+                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                    font.weight: Font.DemiBold
+                }
+            }
+
+        }
+
+        RowLayout {
+            id: providerMetaRow
+
+            visible: providerHeaderRow.hasAccount || providerHeaderRow.hasPlan
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+
+            PlainPlasmaLabel {
+                id: providerAccountLabel
+
+                Layout.alignment: Qt.AlignBaseline
+                visible: providerHeaderRow.hasAccount
+                text: providerHeaderRow.providerData ? providerHeaderRow.providerData.account : ""
+                font: Kirigami.Theme.smallFont
+                opacity: providerHeaderRow.applet.secondaryTextOpacity
+                elide: Text.ElideMiddle
+                // The plan sits beside the account instead of drifting to the
+                // row's far end. The label never grows past its own text, so
+                // the trailing filler keeps both left-aligned, while filling
+                // lets the account elide first on narrow popups.
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.maximumWidth: Math.ceil(implicitWidth)
+
+                HoverHandler {
+                    id: providerAccountHover
+                }
+
+                PlainToolTip {
+                    parent: providerAccountLabel
+                    visible: providerAccountLabel.truncated && providerAccountHover.hovered
+                    plainText: providerAccountLabel.text
+                }
+            }
+
+            PlainPlasmaLabel {
+                id: providerMetaSeparator
+
+                Layout.alignment: Qt.AlignBaseline
+                visible: providerHeaderRow.hasAccount && providerHeaderRow.hasPlan
+                text: "·"
+                font: Kirigami.Theme.smallFont
+                opacity: providerHeaderRow.applet.secondaryTextOpacity
+                Accessible.ignored: true
+            }
+
+            PlainPlasmaLabel {
+                id: providerPlanLabel
+
+                Layout.alignment: Qt.AlignBaseline
+                visible: providerHeaderRow.hasPlan
+                text: providerHeaderRow.providerData ? providerHeaderRow.providerData.planText : ""
+                font: Kirigami.Theme.smallFont
+                opacity: providerHeaderRow.applet.secondaryTextOpacity
+                horizontalAlignment: Text.AlignLeft
+                elide: Text.ElideRight
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.maximumWidth: Math.ceil(implicitWidth)
+
+                HoverHandler {
+                    id: providerPlanHover
+                }
+
+                PlainToolTip {
+                    parent: providerPlanLabel
+                    visible: providerPlanLabel.truncated && providerPlanHover.hovered
+                    plainText: providerPlanLabel.text
+                }
+            }
+
+            Item {
+                Layout.fillWidth: true
+            }
+        }
+
+        PlainPlasmaLabel {
+            id: providerUpdatedLabel
+
+            visible: text.length > 0
+            text: providerHeaderRow.providerData
+                ? providerHeaderRow.applet.providerUsageTimestamp(providerHeaderRow.providerData)
+                : providerHeaderRow.applet.lastUpdatedText
+            font: Kirigami.Theme.smallFont
+            opacity: providerHeaderRow.applet.secondaryTextOpacity
+            Layout.fillWidth: true
+            elide: Text.ElideRight
+            maximumLineCount: 1
+
+            HoverHandler {
+                id: providerUpdatedHover
+            }
+
+            PlainToolTip {
+                parent: providerUpdatedLabel
+                visible: providerUpdatedLabel.truncated && providerUpdatedHover.hovered
+                plainText: providerUpdatedLabel.text
+            }
+        }
+    }
+
+    RefreshButton {
+        id: providerRefreshButton
+
+        Layout.alignment: Qt.AlignTop
+        busy: providerHeaderRow.applet.loading
+        label: i18n("Refresh")
+        onRequested: providerHeaderRow.applet.refreshNow(true)
+    }
+}

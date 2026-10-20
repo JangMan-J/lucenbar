@@ -1,0 +1,1353 @@
+import QtQuick
+import QtQuick.Controls as Controls
+import QtQuick.Layouts
+import org.kde.kirigami as Kirigami
+import org.kde.plasma.components as PlasmaComponents
+import "." as Components
+import "../TabStripGeometry.js" as TabStripGeometry
+
+Item {
+    id: fullRoot
+
+    required property var applet
+
+    // Every content section shares one standard height, so switching tabs
+    // never resizes the dialog. Only the content-less states (loading,
+    // empty setup, missing CLI) stay compact and content-driven.
+    readonly property int maximumPopupHeight: Kirigami.Units.gridUnit * 38
+    readonly property int minimumPopupHeight: Kirigami.Units.gridUnit * 20
+    readonly property int popupContentHeight: Math.ceil(popupContent.implicitHeight)
+        + Kirigami.Units.largeSpacing * 2
+    // Provider and Overview tabs imply a non-empty roster.
+    readonly property bool standardHeightActive: applet.providers.length > 0
+
+    implicitWidth: Kirigami.Units.gridUnit * 34
+    implicitHeight: standardHeightActive
+        ? maximumPopupHeight
+        : Math.max(minimumPopupHeight,
+            Math.min(maximumPopupHeight, popupContentHeight))
+    Layout.minimumWidth: Kirigami.Units.gridUnit * 30
+    Layout.minimumHeight: Math.min(Kirigami.Units.gridUnit * 28, implicitHeight)
+    Layout.preferredWidth: implicitWidth
+    Layout.preferredHeight: implicitHeight
+
+    readonly property string usageRecoveryHint: i18n("Check the provider on the Providers page in settings, or log in again there.")
+
+    // Two different problems reach an empty popup. A shell that cannot run
+    // the configured executable needs a command path, not a retry, so it
+    // takes its own state instead of sharing the provider setup message.
+    readonly property bool commandPathMissing: applet.commandPathFailed
+        && applet.providers.length === 0
+        && !applet.loading
+
+    readonly property bool globalErrorActive: applet.errorText.length > 0
+        && !fullRoot.commandPathMissing
+        && (!applet.selectedProviderData || applet.selectedProviderData.error !== applet.errorText)
+
+    Controls.Action {
+        id: retryUsageAction
+
+        text: i18n("Retry")
+        icon.name: "view-refresh"
+        enabled: !applet.loading
+        onTriggered: applet.retryUsage()
+    }
+
+    Controls.Action {
+        id: usageSettingsAction
+
+        text: i18n("Settings…")
+        icon.name: "configure"
+        onTriggered: applet.performAction("settings")
+    }
+
+    Controls.Action {
+        id: configureProvidersAction
+
+        text: i18n("Configure providers…")
+        icon.name: "configure"
+        onTriggered: applet.performAction("settings")
+    }
+
+    Components.PlainInlineMessage {
+        id: globalErrorMessage
+        parent: applet.presentedProviderData ? providerErrorSlot
+            : applet.overviewSelected ? overviewErrorSlot : emptyErrorSlot
+        objectName: "globalErrorMessage"
+
+        visible: fullRoot.globalErrorActive
+        plainText: applet.privateErrorText(applet.errorText) + "\n\n" + fullRoot.usageRecoveryHint
+        type: Kirigami.MessageType.Error
+        actions: [retryUsageAction, usageSettingsAction]
+        width: parent.width
+        height: implicitHeight
+    }
+
+    // Content sits directly on the Plasma dialog background. The dialog already
+    // draws the frame, so an inner outline would only nest a card inside it.
+    ColumnLayout {
+        id: popupContent
+
+        anchors.fill: parent
+        anchors.margins: Kirigami.Units.largeSpacing
+        spacing: Kirigami.Units.largeSpacing
+
+        Item {
+            id: providerTabsBar
+
+            // Compare against the full strip, not the narrower scroll viewport:
+            // reserving button space must not make overflow self-sustaining.
+            // A zero width during initialization must not flash the buttons.
+            readonly property bool tabsOverflow: width > 0
+                && providerTabs.implicitWidth > width - Kirigami.Units.smallSpacing
+
+            visible: applet.providers.length > 0
+            Layout.fillWidth: true
+            Layout.preferredHeight: Kirigami.Units.gridUnit * 2.35
+
+            Rectangle {
+                id: providerTabsSurface
+
+                anchors.fill: parent
+                radius: applet.roundedSurfaceRadius
+                color: applet.withAlpha(Kirigami.Theme.textColor, 0.035)
+                border.width: 1
+                border.color: applet.withAlpha(Kirigami.Theme.textColor, 0.06)
+            }
+
+            Flickable {
+                id: providerTabsFlickable
+                objectName: "providerTabsFlickable"
+
+                // The selected provider tab, so geometry changes can bring it
+                // back into view without every delegate registering itself.
+                property Item selectedTab: null
+                readonly property real tabPageStep: Math.max(Kirigami.Units.gridUnit * 4, width * 0.6)
+                readonly property real tabWheelStep: Kirigami.Units.gridUnit * 5
+
+                function scrollTo(position, immediate) {
+                    var bounded = TabStripGeometry.boundedPosition(position, contentWidth, width)
+                    providerTabsScroll.stop()
+                    if (immediate || Kirigami.Units.shortDuration <= 0) {
+                        contentX = bounded
+                        return
+                    }
+                    providerTabsScroll.to = bounded
+                    providerTabsScroll.start()
+                }
+
+                function scrollBy(delta, immediate) {
+                    scrollTo(contentX + delta, immediate)
+                }
+
+                // Tabs come from three different delegates, so walk the parent
+                // chain instead of keeping a registry of them in sync.
+                function containsTab(item) {
+                    var node = item
+                    while (node) {
+                        if (node === providerTabs) {
+                            return true
+                        }
+                        node = node.parent
+                    }
+                    return false
+                }
+
+                function ensureVisible(item) {
+                    providerTabsScroll.stop()
+                    if (!interactive || !item || item.width <= 0 || !containsTab(item)) {
+                        return
+                    }
+                    var target = TabStripGeometry.revealPosition(
+                        item.mapToItem(providerTabs, 0, 0).x,
+                        item.width,
+                        contentX,
+                        width,
+                        Kirigami.Units.gridUnit)
+                    // Keep an already-visible tab in place instead of aligning
+                    // it again on every focus or selection report.
+                    if (target !== null) {
+                        // Focus, selection and resize are direct navigation.
+                        // A focused tab must be visible before its next keypress.
+                        scrollTo(target, true)
+                    }
+                }
+
+                // Every tab kind reports through here: tracking only provider
+                // tabs would leave a stale one selected once a global view is
+                // picked, and a later resize would scroll it back into view.
+                function claimSelectedTab(item, isSelected) {
+                    if (!isSelected) {
+                        if (selectedTab === item) {
+                            selectedTab = null
+                        }
+                        return
+                    }
+                    selectedTab = item
+                    ensureVisible(item)
+                }
+
+                function revealSelectedTab() {
+                    ensureVisible(selectedTab)
+                }
+
+                // The focusable tabs in strip order, read off the focus chain
+                // around the given tab. Both walks stop at the first item
+                // outside the strip, and at a tab already collected in case
+                // the chain wraps back without leaving the strip.
+                function focusableTabs(item) {
+                    var tabs = [item]
+                    var candidate = item.nextItemInFocusChain(false)
+                    while (candidate && containsTab(candidate) && tabs.indexOf(candidate) < 0) {
+                        tabs.unshift(candidate)
+                        candidate = candidate.nextItemInFocusChain(false)
+                    }
+                    candidate = item.nextItemInFocusChain(true)
+                    while (candidate && containsTab(candidate) && tabs.indexOf(candidate) < 0) {
+                        tabs.push(candidate)
+                        candidate = candidate.nextItemInFocusChain(true)
+                    }
+                    return tabs
+                }
+
+                // Arrow keys wrap around the strip and Home/End jump to its
+                // ends, as in the WAI-ARIA tabs pattern. Focus moves without
+                // selecting, so browsing tabs never switches the view.
+                function navigateFromTab(item, key) {
+                    var action = ""
+                    switch (key) {
+                    case Qt.Key_Left:
+                        action = "previous"
+                        break
+                    case Qt.Key_Right:
+                        action = "next"
+                        break
+                    case Qt.Key_Home:
+                        action = "first"
+                        break
+                    case Qt.Key_End:
+                        action = "last"
+                        break
+                    default:
+                        return false
+                    }
+                    if (!item || !containsTab(item)) {
+                        return false
+                    }
+                    var tabs = focusableTabs(item)
+                    var target = TabStripGeometry.keyboardTargetIndex(action, tabs.indexOf(item), tabs.length)
+                    if (target < 0) {
+                        return false
+                    }
+                    tabs[target].forceActiveFocus(action === "next" || action === "last"
+                        ? Qt.TabFocusReason : Qt.BacktabFocusReason)
+                    return true
+                }
+
+                anchors.fill: parent
+                anchors.margins: Kirigami.Units.smallSpacing / 2
+                anchors.leftMargin: providerTabsBar.tabsOverflow
+                    ? previousTabsButton.width + Kirigami.Units.smallSpacing : Kirigami.Units.smallSpacing / 2
+                anchors.rightMargin: providerTabsBar.tabsOverflow
+                    ? nextTabsButton.width + Kirigami.Units.smallSpacing : Kirigami.Units.smallSpacing / 2
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                contentWidth: providerTabs.implicitWidth
+                contentHeight: height
+                interactive: contentWidth > width
+
+                onMovementStarted: providerTabsScroll.stop()
+                onWidthChanged: Qt.callLater(providerTabsFlickable.revealSelectedTab)
+                onContentWidthChanged: Qt.callLater(providerTabsFlickable.revealSelectedTab)
+
+                NumberAnimation {
+                    id: providerTabsScroll
+
+                    target: providerTabsFlickable
+                    property: "contentX"
+                    duration: Kirigami.Units.shortDuration
+                    easing.type: Easing.OutCubic
+                }
+
+                // Touchpads flick this strip horizontally, but a plain mouse
+                // only sends a vertical wheel, which a horizontal-only
+                // Flickable ignores; without this the overflowing tabs can
+                // only be reached by dragging the strip.
+                WheelHandler {
+                    enabled: providerTabsFlickable.interactive
+                    acceptedDevices: PointerDevice.Mouse
+
+                    onWheel: function(event) {
+                        var delta = event.angleDelta.y !== 0 ? event.angleDelta.y : event.angleDelta.x
+                        if (delta === 0) {
+                            return
+                        }
+                        providerTabsFlickable.scrollBy(
+                            -delta / 120 * providerTabsFlickable.tabWheelStep)
+                    }
+                }
+
+                RowLayout {
+                    id: providerTabs
+
+                    height: providerTabsFlickable.height
+                    spacing: Kirigami.Units.smallSpacing / 2
+
+                    Components.GlobalTab {
+                        id: overviewTab
+                        objectName: "overviewTab"
+
+                        visible: applet.overviewAvailable
+                        applet: fullRoot.applet
+                        title: i18n("Overview")
+                        showLabel: applet.showPopupTabLabels
+                        tabStrip: providerTabsFlickable
+                        iconName: "view-grid-symbolic"
+                        tabHeight: providerTabsFlickable.height
+                        selected: applet.overviewSelected
+                        onActivated: {
+                            applet.selectGlobalView("overview")
+                        }
+                    }
+
+                    Rectangle {
+                        visible: applet.providers.length > 0 && applet.overviewAvailable
+                        Layout.preferredHeight: providerTabsFlickable.height - Kirigami.Units.smallSpacing * 2
+                        Layout.preferredWidth: 1
+                        Layout.alignment: Qt.AlignVCenter
+                        color: applet.withAlpha(Kirigami.Theme.textColor, 0.12)
+                    }
+
+                    Repeater {
+                        model: applet.presentedProviders
+
+                        delegate: Rectangle {
+                            id: providerTab
+
+                            required property int index
+                            required property var modelData
+                            readonly property bool selected: index === applet.selectedProviderIndex
+                            readonly property bool keyboardFocusVisible: providerFocus.visualFocus
+                            readonly property real meter: applet.switcherPercent(modelData)
+                            readonly property color accent: applet.providerReadableColor(
+                                modelData.provider,
+                                Kirigami.Theme.backgroundColor)
+                            readonly property color foreground: selected
+                                ? Kirigami.Theme.textColor
+                                : applet.withAlpha(Kirigami.Theme.textColor, 0.72)
+
+                            readonly property bool shownInPanel: applet.panelShowsProvider(modelData.provider)
+
+                            // First click selects; a click on the selected tab
+                            // toggles the provider in or out of the panel.
+                            function activate() {
+                                if (selected && applet.selectionInitialized) {
+                                    applet.togglePanelProvider(modelData.provider)
+                                    return
+                                }
+                                applet.selectedProviderID = modelData.provider
+                                applet.selectionInitialized = true
+                            }
+
+                            // An auto-selected provider can sit past the right
+                            // edge; keep the active tab reachable and visible.
+                            function claimSelectedTab() {
+                                providerTabsFlickable.claimSelectedTab(providerTab, selected)
+                            }
+
+                            Layout.preferredWidth: applet.showPopupTabLabels
+                                ? Math.min(
+                                    Kirigami.Units.gridUnit * 7,
+                                    Math.max(Kirigami.Units.gridUnit * 4.2,
+                                        Math.ceil(providerTabLabelSizing.implicitWidth) + Kirigami.Units.gridUnit * 2.2))
+                                : providerTabsFlickable.height
+                            Layout.preferredHeight: providerTabsFlickable.height
+                            radius: applet.roundedSurfaceRadius
+                            color: providerTabMouse.pressed
+                                ? applet.withAlpha(Kirigami.Theme.focusColor, 0.1)
+                                : (selected
+                                ? applet.withAlpha(Kirigami.Theme.textColor, 0.1)
+                                : (keyboardFocusVisible
+                                ? applet.withAlpha(Kirigami.Theme.focusColor, 0.06)
+                                : (providerTabMouse.containsMouse ? applet.withAlpha(Kirigami.Theme.textColor, 0.05) : "transparent")
+                                ))
+                            border.width: keyboardFocusVisible ? 1 : 0
+                            border.color: Kirigami.Theme.focusColor
+                            opacity: modelData.error.length > 0 ? 0.62 : 1
+                            scale: providerTabMouse.pressed ? 0.985 : 1
+                            onSelectedChanged: providerTab.claimSelectedTab()
+                            Component.onCompleted: providerTab.claimSelectedTab()
+
+                            Behavior on color {
+                                ColorAnimation {
+                                    duration: Kirigami.Units.shortDuration
+                                }
+                            }
+
+                            Behavior on scale {
+                                NumberAnimation {
+                                    duration: Kirigami.Units.shortDuration
+                                    easing.type: Easing.OutCubic
+                                }
+                            }
+
+                            Controls.Control {
+                                id: providerFocus
+
+                                anchors.fill: parent
+                                activeFocusOnTab: true
+                                background: null
+
+                                onActiveFocusChanged: {
+                                    if (activeFocus) {
+                                        providerTabsFlickable.ensureVisible(providerTab)
+                                    }
+                                }
+
+                                Accessible.role: Accessible.PageTab
+                                Accessible.name: providerTab.modelData.title
+                                Accessible.description: applet.switcherDescription(providerTab.modelData)
+                                Accessible.selectable: true
+                                Accessible.selected: providerTab.selected
+                                Accessible.onPressAction: providerTab.activate()
+
+                                Keys.onPressed: function(event) {
+                                    switch (event.key) {
+                                    case Qt.Key_Space:
+                                    case Qt.Key_Enter:
+                                    case Qt.Key_Return:
+                                    case Qt.Key_Select:
+                                        providerTab.activate()
+                                        event.accepted = true
+                                        break
+                                    default:
+                                        event.accepted = providerTabsFlickable.navigateFromTab(providerFocus, event.key)
+                                        break
+                                    }
+                                }
+                            }
+
+                            MouseArea {
+                                id: providerTabMouse
+
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onPressed: providerFocus.forceActiveFocus(Qt.MouseFocusReason)
+                                onClicked: providerTab.activate()
+                            }
+
+                            // Labelled tabs are capped in width, so a long
+                            // provider name elides; hover or keyboard focus reveals it.
+                            PlainToolTip {
+                                parent: providerTabMouse
+                                visible: providerTabMouse.containsMouse || providerFocus.visualFocus
+                                plainText: providerTab.selected
+                                    ? (providerTab.shownInPanel
+                                        ? i18n("%1. In the panel; click to hide it.", modelData.title)
+                                        : i18n("%1. Hidden from the panel; click to show it.", modelData.title))
+                                    : (providerTab.shownInPanel ? modelData.title : i18n("%1 (hidden from the panel)", modelData.title))
+                            }
+
+                            PlainPlasmaLabel {
+                                id: providerTabLabelSizing
+
+                                visible: false
+                                Accessible.ignored: true
+                                text: providerTab.modelData.title
+                                font.weight: Font.DemiBold
+                            }
+
+                            RowLayout {
+                                id: providerTabContent
+
+                                anchors.fill: parent
+                                anchors.margins: Kirigami.Units.smallSpacing
+                                spacing: Kirigami.Units.smallSpacing
+
+                                Item {
+                                    id: providerTabLeadingSpacer
+
+                                    visible: !applet.showPopupTabLabels
+                                    Layout.fillWidth: !applet.showPopupTabLabels
+                                }
+
+                                Kirigami.Icon {
+                                    source: applet.providerIconSource(modelData.provider)
+                                    fallback: "view-statistics"
+                                    isMask: applet.providerIconIsMask(modelData.provider)
+                                    // Unselected tabs dim but keep their hue, so the
+                                    // provider stays recognizable while selection
+                                    // reads the same way as on the global tabs.
+                                    color: providerTab.selected ? providerTab.accent : applet.withAlpha(providerTab.accent, 0.6)
+                                    // Off the panel: the logo fades hard so the state reads at a glance.
+                                    opacity: providerTab.shownInPanel ? 1 : 0.3
+                                    Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+                                    Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
+                                }
+
+                                Item {
+                                    id: providerTabTrailingSpacer
+
+                                    visible: !applet.showPopupTabLabels
+                                    Layout.fillWidth: !applet.showPopupTabLabels
+                                }
+
+                                PlainPlasmaLabel {
+                                    id: providerTabLabel
+
+                                    visible: applet.showPopupTabLabels
+                                    text: modelData.title
+                                    font.weight: providerTab.selected ? Font.DemiBold : Font.Normal
+                                    color: providerTab.foreground
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                            }
+
+                            // The underline is a quota meter, never a selection
+                            // mark: the tab surface alone carries selection, so
+                            // a partly filled bar cannot read as a selected tab.
+                            Rectangle {
+                                visible: providerTab.meter >= 0
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                anchors.leftMargin: Kirigami.Units.smallSpacing
+                                anchors.rightMargin: Kirigami.Units.smallSpacing
+                                anchors.bottomMargin: 2
+                                height: 2
+                                radius: height / 2
+                                color: applet.withAlpha(Kirigami.Theme.textColor, 0.12)
+                                clip: true
+
+                                Rectangle {
+                                    width: providerTab.meter <= 0
+                                        ? 0
+                                        : Math.max(parent.height, parent.width * Math.max(0, Math.min(100, providerTab.meter)) / 100)
+                                    height: parent.height
+                                    radius: parent.radius
+                                    color: providerTab.accent
+
+                                    Behavior on width {
+                                        NumberAnimation {
+                                            duration: Kirigami.Units.longDuration
+                                            easing.type: Easing.OutCubic
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            PlasmaComponents.ToolButton {
+                id: previousTabsButton
+                objectName: "previousTabsButton"
+
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: Kirigami.Units.smallSpacing / 2
+                width: height
+                height: parent.height - Kirigami.Units.smallSpacing
+                visible: providerTabsBar.tabsOverflow
+                enabled: providerTabsFlickable.contentX > 0
+                icon.name: "go-previous-symbolic"
+                text: i18n("Show previous tabs")
+                display: PlasmaComponents.AbstractButton.IconOnly
+                Accessible.name: text
+                onClicked: providerTabsFlickable.scrollBy(-providerTabsFlickable.tabPageStep, visualFocus)
+
+                PlainToolTip {
+                    plainText: previousTabsButton.text
+                    visible: previousTabsButton.hovered || previousTabsButton.visualFocus
+                    delay: Kirigami.Units.toolTipDelay
+                }
+            }
+
+            PlasmaComponents.ToolButton {
+                id: nextTabsButton
+                objectName: "nextTabsButton"
+
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.rightMargin: Kirigami.Units.smallSpacing / 2
+                width: height
+                height: parent.height - Kirigami.Units.smallSpacing
+                visible: providerTabsBar.tabsOverflow
+                enabled: providerTabsFlickable.contentX < providerTabsFlickable.contentWidth - providerTabsFlickable.width - 1
+                icon.name: "go-next-symbolic"
+                text: i18n("Show more tabs")
+                display: PlasmaComponents.AbstractButton.IconOnly
+                Accessible.name: text
+                onClicked: providerTabsFlickable.scrollBy(providerTabsFlickable.tabPageStep, visualFocus)
+
+                PlainToolTip {
+                    plainText: nextTabsButton.text
+                    visible: nextTabsButton.hovered || nextTabsButton.visualFocus
+                    delay: Kirigami.Units.toolTipDelay
+                }
+            }
+        }
+
+        // A plain Item absorbs the leftover popup height; a RowLayout here
+        // inherits its children's maximum height, so the layout engine would
+        // spread the slack across every row and push the tab bar downwards.
+        Item {
+            id: providerUsageLoadingRow
+
+            visible: true
+                && applet.providers.length === 0
+                && !fullRoot.commandPathMissing
+                && applet.loading
+                && applet.errorText.length === 0
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+
+            RowLayout {
+                visible: applet.loading && applet.errorText.length === 0
+                anchors.centerIn: parent
+                width: Math.min(implicitWidth, parent.width)
+                spacing: Kirigami.Units.smallSpacing
+
+                Controls.BusyIndicator {
+                    running: providerUsageLoadingRow.visible && parent.visible
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                    Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+                }
+
+                PlainPlasmaLabel {
+                    text: i18n("Loading usage…")
+                    opacity: applet.secondaryTextOpacity
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+            }
+        }
+
+        PlasmaComponents.ScrollView {
+            id: emptyErrorScroll
+            objectName: "emptyErrorScroll"
+
+            visible: true
+                && applet.providers.length === 0
+                && !fullRoot.commandPathMissing
+                && applet.errorText.length > 0
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            contentWidth: availableWidth
+            clip: true
+            PlasmaComponents.ScrollBar.horizontal.policy: PlasmaComponents.ScrollBar.AlwaysOff
+
+            ColumnLayout {
+                width: Math.max(0, emptyErrorScroll.availableWidth - Kirigami.Units.smallSpacing)
+                height: Math.max(implicitHeight, emptyErrorScroll.availableHeight)
+                spacing: Kirigami.Units.largeSpacing
+
+                Item {
+                    id: emptyErrorSlot
+
+                    visible: globalErrorMessage.parent === emptyErrorSlot && fullRoot.globalErrorActive
+                    implicitHeight: fullRoot.globalErrorActive ? globalErrorMessage.implicitHeight : 0
+                    Layout.fillWidth: true
+                }
+
+                Item {
+                    visible: applet.errorText.length > 0 && !applet.loading
+                    implicitHeight: Kirigami.Units.iconSizes.large
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+
+                    Kirigami.Icon {
+                        id: providerUsageErrorIcon
+                        objectName: "providerUsageErrorIcon"
+
+                        anchors.centerIn: parent
+                        source: "dialog-error-symbolic"
+                        fallback: "dialog-error"
+                        width: Kirigami.Units.iconSizes.large
+                        height: Kirigami.Units.iconSizes.large
+                        opacity: 0.5
+                    }
+                }
+            }
+        }
+
+        Item {
+            id: missingCommandMessage
+
+            implicitHeight: missingCommandPlaceholder.implicitHeight
+            visible: fullRoot.commandPathMissing
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+
+            PlainPlaceholderMessage {
+                id: missingCommandPlaceholder
+                objectName: "missingCommandPlaceholder"
+
+                anchors.centerIn: parent
+                width: parent.width
+                plainText: i18n("CodexBar CLI not found")
+                // The configured value is named because it is what the user has
+                // to correct, and a bare "codexbar" hides a PATH problem.
+                plainExplanation: i18n("Plasma could not run '%1'. Open the widget settings, click Update now on the Providers page to install the CodexBar CLI, then click Apply.", applet.commandPath)
+                icon.name: "dialog-error-symbolic"
+                type: Kirigami.PlaceholderMessage.Type.Actionable
+                helpfulAction: usageSettingsAction
+            }
+        }
+
+        Item {
+            id: emptyProvidersMessage
+
+            implicitHeight: emptyProvidersPlaceholder.implicitHeight
+            visible: applet.providers.length === 0
+                && !applet.globalViewSelected
+                && !fullRoot.commandPathMissing
+                && applet.errorText.length === 0
+                && !applet.loading
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+
+            // Keep the native placeholder together while this item fills the view.
+            PlainPlaceholderMessage {
+                id: emptyProvidersPlaceholder
+                objectName: "emptyProvidersPlaceholder"
+
+                anchors.centerIn: parent
+                width: parent.width
+                plainText: i18n("No provider data")
+                plainExplanation: i18n("Open Providers in widget settings to enable or set up a provider.")
+                icon.name: "view-statistics-symbolic"
+                type: Kirigami.PlaceholderMessage.Type.Actionable
+                helpfulAction: configureProvidersAction
+            }
+        }
+
+        ColumnLayout {
+            visible: applet.overviewSelected
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: Kirigami.Units.largeSpacing
+
+            RowLayout {
+                id: overviewHeaderRow
+
+                Layout.fillWidth: true
+                Layout.rightMargin: Kirigami.Units.smallSpacing
+                spacing: Kirigami.Units.smallSpacing
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.smallSpacing / 2
+
+                    PlainHeading {
+                        text: i18n("Overview")
+                        level: 2
+                        type: Kirigami.Heading.Type.Primary
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
+                    }
+
+                    PlainPlasmaLabel {
+                        objectName: "overviewProviderCountLabel"
+                        readonly property int providerCount: applet.overviewProviderItems.length
+                        readonly property int totalProviderCount: applet.providers.length
+                        readonly property string countText: providerCount < totalProviderCount
+                            ? i18np("%2 of %1 provider", "%2 of %1 providers", totalProviderCount, providerCount)
+                            : applet.providerCountText(providerCount)
+
+                        text: [applet.lastUpdatedText, countText]
+                            .filter(function(part) { return part.length > 0 })
+                            .join(" \u00b7 ")
+                        font: Kirigami.Theme.smallFont
+                        opacity: applet.secondaryTextOpacity
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
+                    }
+                }
+
+                Components.RefreshButton {
+                    Layout.alignment: Qt.AlignTop
+                    busy: applet.loading
+                    label: i18n("Refresh")
+                    onRequested: applet.refreshNow(true)
+                }
+            }
+
+            PlasmaComponents.ScrollView {
+                id: overviewScroll
+                objectName: "overviewScroll"
+
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                contentWidth: availableWidth
+                clip: true
+                PlasmaComponents.ScrollBar.horizontal.policy: PlasmaComponents.ScrollBar.AlwaysOff
+
+                ColumnLayout {
+                    width: Math.max(
+                        0,
+                        overviewScroll.availableWidth - Kirigami.Units.smallSpacing)
+                    spacing: Kirigami.Units.smallSpacing
+
+                    Item {
+                        id: overviewErrorSlot
+
+                        visible: globalErrorMessage.parent === overviewErrorSlot && fullRoot.globalErrorActive
+                        implicitHeight: fullRoot.globalErrorActive ? globalErrorMessage.implicitHeight : 0
+                        Layout.fillWidth: true
+                    }
+
+                    Repeater {
+                        model: applet.presentedOverviewProviders
+
+                        delegate: Components.OverviewProviderRow {
+                            applet: fullRoot.applet
+                            onSelected: function(providerData) {
+                                var nextProviderIndex = applet.providerIndex(providerData)
+                                if (nextProviderIndex >= 0) {
+                                    applet.selectedProviderID = providerData.provider
+                                    applet.selectionInitialized = true
+                                }
+                            }
+                        }
+                    }
+
+                }
+            }
+        }
+
+        ColumnLayout {
+            visible: applet.presentedProviderData !== null
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: Kirigami.Units.largeSpacing
+
+            Components.ProviderHeader {
+                applet: fullRoot.applet
+                providerData: applet.presentedProviderData
+            }
+
+            PlasmaComponents.ScrollView {
+                id: providerScroll
+                objectName: "providerScroll"
+
+                readonly property string selectionKey: JSON.stringify([
+                    applet.selectedProviderData ? applet.selectedProviderData.provider : "",
+                    applet.selectedProviderData
+                        ? applet.selectedAccountForProvider(applet.selectedProviderData.provider) : "",
+                    applet.accountKey(applet.selectedProviderData)
+                ])
+
+                onSelectionKeyChanged: {
+                    var flickable = contentItem as Flickable
+                    if (flickable) {
+                        flickable.cancelFlick()
+                        flickable.contentY = 0
+                    }
+                }
+
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                contentWidth: availableWidth
+                clip: true
+                PlasmaComponents.ScrollBar.horizontal.policy: PlasmaComponents.ScrollBar.AlwaysOff
+
+                ColumnLayout {
+                    width: Math.max(
+                        0,
+                        providerScroll.availableWidth - Kirigami.Units.smallSpacing)
+                    spacing: Kirigami.Units.largeSpacing
+
+                    Item {
+                        id: providerErrorSlot
+
+                        visible: globalErrorMessage.parent === providerErrorSlot && fullRoot.globalErrorActive
+                        implicitHeight: fullRoot.globalErrorActive ? globalErrorMessage.implicitHeight : 0
+                        Layout.fillWidth: true
+                    }
+
+                    // A compact pill that hugs its text, tinted with the same
+                    // severity color as the header badge and the panel dot.
+                    Rectangle {
+                        id: providerStatusMessage
+                        objectName: "providerStatusMessage"
+
+                        readonly property color tone: applet.presentedProviderData
+                            ? applet.statusBadgeColor(applet.presentedProviderData.statusSeverity)
+                            : "transparent"
+                        readonly property real horizontalPadding: Kirigami.Units.smallSpacing * 2.5
+                        readonly property real verticalPadding: Kirigami.Units.smallSpacing
+                        readonly property real chromeWidth: horizontalPadding * 2
+                            + providerStatusDot.width + Kirigami.Units.smallSpacing * 1.5
+
+                        visible: applet.presentedProviderData
+                            && applet.presentedProviderData.hasIncident
+                            && applet.presentedProviderData.statusKnown !== false
+                            && applet.presentedProviderData.status
+                            && applet.presentedProviderData.status.length > 0
+                        Layout.preferredWidth: Math.min(parent.width,
+                            providerStatusLabel.implicitWidth + chromeWidth)
+                        implicitHeight: providerStatusLabel.height + verticalPadding * 2
+                        radius: providerStatusLabel.lineCount > 1
+                            ? Kirigami.Units.cornerRadius * 2
+                            : height / 2
+                        color: applet.withAlpha(tone, 0.14)
+                        border.width: 1
+                        border.color: applet.withAlpha(tone, 0.32)
+
+                        Rectangle {
+                            id: providerStatusDot
+
+                            x: providerStatusMessage.horizontalPadding
+                            // Centered on the first line, sized to the text.
+                            y: providerStatusLabel.y + (providerStatusMetrics.height - height) / 2
+                            width: Math.round(providerStatusMetrics.height * 0.4)
+                            height: width
+                            radius: width / 2
+                            color: providerStatusMessage.tone
+                        }
+
+                        FontMetrics {
+                            id: providerStatusMetrics
+
+                            font: providerStatusLabel.font
+                        }
+
+                        PlainPlasmaLabel {
+                            id: providerStatusLabel
+
+                            x: providerStatusDot.x + providerStatusDot.width + Kirigami.Units.smallSpacing * 1.5
+                            y: providerStatusMessage.verticalPadding
+                            width: providerStatusMessage.width - providerStatusMessage.chromeWidth
+                            text: applet.presentedProviderData ? applet.presentedProviderData.status : ""
+                            font: Kirigami.Theme.smallFont
+                            wrapMode: Text.Wrap
+                        }
+                    }
+
+                    Components.PlainInlineMessage {
+                        id: providerErrorMessage
+                        objectName: "providerErrorMessage"
+
+                        visible: applet.presentedProviderData
+                            && applet.presentedProviderData.error
+                            && applet.presentedProviderData.error.length > 0
+                        plainText: (applet.presentedProviderData ? applet.presentedProviderData.error : "")
+                            + (globalErrorMessage.visible ? "" : "\n\n" + fullRoot.usageRecoveryHint)
+                        type: Kirigami.MessageType.Error
+                        actions: globalErrorMessage.visible ? [] : [retryUsageAction, usageSettingsAction]
+                        Layout.fillWidth: true
+                    }
+
+                    PlainPlaceholderMessage {
+                        id: providerPlaceholderMessage
+
+                        visible: applet.providerPlaceholderText(applet.presentedProviderData).length > 0
+                        plainText: applet.providerPlaceholderText(applet.presentedProviderData)
+                        icon.name: "view-statistics-symbolic"
+                        type: Kirigami.PlaceholderMessage.Type.Informational
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Kirigami.Units.gridUnit * 8
+                    }
+
+                    Repeater {
+                        model: applet.popupUsageRows(applet.presentedProviderData)
+
+                        delegate: Components.ProviderUsageRow {
+                            applet: fullRoot.applet
+                            providerData: applet.presentedProviderData
+                        }
+                    }
+
+                    ColumnLayout {
+                        id: subscriptionDatesSection
+                        objectName: "subscriptionDatesSection"
+
+                        readonly property var dates: applet.presentedProviderData
+                            ? (applet.presentedProviderData.subscriptionDates || []) : []
+
+                        visible: dates.length > 0
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Kirigami.Separator {
+                            Layout.fillWidth: true
+                        }
+
+                        Repeater {
+                            model: subscriptionDatesSection.dates
+
+                            delegate: PlainPlasmaLabel {
+                                required property var modelData
+                                objectName: "subscriptionDateLabel"
+                                text: applet.subscriptionDateText(modelData)
+                                Layout.fillWidth: true
+                                wrapMode: Text.Wrap
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        id: creditsSection
+                        objectName: "creditsSection"
+
+                        readonly property var creditLimit: applet.presentedProviderData
+                            ? applet.presentedProviderData.codexCreditLimit
+                            : null
+                        readonly property var creditLimitRow: applet.codexCreditLimitUsageRow(
+                            creditsSection.creditLimit)
+
+                        visible: applet.showPopupCredits && applet.presentedProviderData
+                            && (applet.presentedProviderData.credits !== null
+                                || creditsSection.creditLimit !== null
+                                || applet.presentedProviderData.resetCredits !== null)
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Kirigami.Separator {
+                            Layout.fillWidth: true
+                        }
+
+                        PlainHeading {
+                            text: i18n("Credits")
+                            level: 4
+                            type: Kirigami.Heading.Type.Primary
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                        }
+
+                        Repeater {
+                            model: creditsSection.creditLimitRow ? [creditsSection.creditLimitRow] : []
+
+                            delegate: Components.ProviderUsageRow {
+                                applet: fullRoot.applet
+                                providerData: applet.presentedProviderData
+                            }
+                        }
+
+                        RowLayout {
+                            visible: applet.presentedProviderData
+                                && applet.presentedProviderData.credits !== null
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            PlainPlasmaLabel {
+                                text: i18n("Remaining: %1", applet.presentedProviderData ? applet.formatNumber(applet.presentedProviderData.credits) : "")
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        // Reset credits share the Credits separator instead of taking
+                        // their own: one heading plus a labeled row reads as a
+                        // single group rather than a ladder of thin sections.
+                        RowLayout {
+                            id: resetCreditsSection
+                            objectName: "resetCreditsSection"
+
+                            readonly property var resetCredits: applet.presentedProviderData ? applet.presentedProviderData.resetCredits : null
+
+                            visible: applet.showPopupCredits && resetCreditsSection.resetCredits ? true : false
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            PlainPlasmaLabel {
+                                text: resetCreditsSection.resetCredits ? resetCreditsSection.resetCredits.title : ""
+                                opacity: applet.secondaryTextOpacity
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
+                            }
+
+                            PlainPlasmaLabel {
+                                text: resetCreditsSection.resetCredits ? resetCreditsSection.resetCredits.line : ""
+                                opacity: applet.valueTextOpacity
+                                horizontalAlignment: Text.AlignRight
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        id: providerCostSection
+                        objectName: "providerCostSection"
+
+                        readonly property var providerCost: !applet.privacyMode && applet.presentedProviderData
+                            ? applet.presentedProviderData.providerCost : null
+                        readonly property color accent: applet.providerReadableColor(applet.presentedProviderData ? applet.presentedProviderData.provider : "")
+
+                        visible: applet.showPopupProviderDetails && providerCostSection.providerCost ? true : false
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Kirigami.Separator {
+                            Layout.fillWidth: true
+                        }
+
+                        PlainHeading {
+                            text: providerCostSection.providerCost ? providerCostSection.providerCost.title : ""
+                            level: 4
+                            type: Kirigami.Heading.Type.Primary
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                        }
+
+                        Rectangle {
+                            visible: providerCostSection.providerCost && providerCostSection.providerCost.percentUsed >= 0 ? true : false
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: applet.meterTrackHeight
+                            radius: height / 2
+                            color: applet.withAlpha(Kirigami.Theme.textColor, 0.1)
+                            clip: true
+
+                            Rectangle {
+                                width: providerCostSection.providerCost && providerCostSection.providerCost.percentUsed > 0
+                                    ? Math.max(parent.height, parent.width * providerCostSection.providerCost.percentUsed / 100)
+                                    : 0
+                                height: parent.height
+                                radius: parent.radius
+                                color: providerCostSection.accent
+
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: Kirigami.Units.longDuration
+                                    }
+                                }
+
+                                Behavior on width {
+                                    NumberAnimation {
+                                        duration: Kirigami.Units.longDuration
+                                        easing.type: Easing.OutCubic
+                                    }
+                                }
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            PlainPlasmaLabel {
+                                text: providerCostSection.providerCost ? providerCostSection.providerCost.spendLine : ""
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
+                            }
+
+                            PlainPlasmaLabel {
+                                visible: providerCostSection.providerCost && providerCostSection.providerCost.percentLine.length > 0 ? true : false
+                                text: providerCostSection.providerCost ? providerCostSection.providerCost.percentLine : ""
+                                opacity: applet.secondaryTextOpacity
+                                horizontalAlignment: Text.AlignRight
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        PlainPlasmaLabel {
+                            visible: providerCostSection.providerCost && providerCostSection.providerCost.personalSpendLine.length > 0 ? true : false
+                            text: providerCostSection.providerCost ? providerCostSection.providerCost.personalSpendLine : ""
+                            opacity: applet.secondaryTextOpacity
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                        }
+                    }
+
+                    ColumnLayout {
+                        id: providerDetailsSection
+                        objectName: "providerDetailsSection"
+
+                        readonly property var details: applet.popupDetailSections(applet.presentedProviderData)
+
+                        visible: applet.showPopupProviderDetails && details.length > 0
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Kirigami.Separator {
+                            Layout.fillWidth: true
+                        }
+
+                        Repeater {
+                            model: providerDetailsSection.details
+
+                            delegate: Components.ProviderDetailSection {
+                                applet: fullRoot.applet
+                                providerData: applet.presentedProviderData
+                            }
+                        }
+
+                    }
+
+                    ColumnLayout {
+                        id: usageDashboardSection
+                        objectName: "usageDashboardSection"
+
+                        readonly property var dashboard: applet.presentedProviderData ? applet.presentedProviderData.usageDashboard : null
+                        readonly property var kpis: dashboard ? dashboard.kpis : []
+                        readonly property var rows: dashboard ? dashboard.rows : []
+
+                        visible: applet.showPopupProviderDetails && (kpis.length > 0 || rows.length > 0)
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Kirigami.Separator {
+                            Layout.fillWidth: true
+                        }
+
+                        PlainHeading {
+                            text: i18n("Usage dashboard")
+                            level: 4
+                            type: Kirigami.Heading.Type.Primary
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                        }
+
+                        GridLayout {
+                            visible: usageDashboardSection.kpis.length > 0
+                            Layout.fillWidth: true
+                            columns: 2
+                            columnSpacing: Kirigami.Units.largeSpacing
+                            rowSpacing: Kirigami.Units.smallSpacing / 2
+
+                            Repeater {
+                                model: usageDashboardSection.kpis
+
+                                delegate: ColumnLayout {
+                                    required property var modelData
+
+                                    Layout.fillWidth: true
+                                    Layout.preferredWidth: 1
+                                    spacing: Kirigami.Units.smallSpacing / 2
+
+                                    PlainPlasmaLabel {
+                                        id: dashboardKpiLabel
+
+                                        text: modelData.label
+                                        opacity: applet.secondaryTextOpacity
+                                        font: Kirigami.Theme.smallFont
+                                        Layout.fillWidth: true
+                                        elide: Text.ElideRight
+
+                                        HoverHandler { id: dashboardKpiLabelHover }
+
+                                        PlainToolTip {
+                                            visible: dashboardKpiLabel.truncated && dashboardKpiLabelHover.hovered
+                                            plainText: dashboardKpiLabel.text
+                                        }
+                                    }
+
+                                    PlainPlasmaLabel {
+                                        id: dashboardKpiValue
+
+                                        text: modelData.value
+                                        font.weight: Font.DemiBold
+                                        Layout.fillWidth: true
+                                        elide: Text.ElideRight
+
+                                        HoverHandler { id: dashboardKpiValueHover }
+
+                                        PlainToolTip {
+                                            visible: dashboardKpiValue.truncated && dashboardKpiValueHover.hovered
+                                            plainText: dashboardKpiValue.text
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        ColumnLayout {
+                            visible: usageDashboardSection.rows.length > 0
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing / 2
+
+                            Repeater {
+                                model: usageDashboardSection.rows
+
+                                delegate: Item {
+                                    required property var modelData
+                                    required property int index
+
+                                    Layout.fillWidth: true
+                                    implicitHeight: Math.max(dashboardRowLabel.implicitHeight,
+                                        dashboardRowValue.implicitHeight)
+
+                                    PlainPlasmaLabel {
+                                        id: dashboardRowLabel
+                                        text: modelData.label
+                                        opacity: applet.secondaryTextOpacity
+                                        width: Math.max(0, parent.width - dashboardRowValue.width
+                                            - Kirigami.Units.smallSpacing)
+                                        elide: Text.ElideRight
+                                    }
+
+                                    PlainPlasmaLabel {
+                                        id: dashboardRowValue
+                                        objectName: "usageDashboardValue" + index
+                                        text: modelData.value
+                                        opacity: applet.valueTextOpacity
+                                        anchors.right: parent.right
+                                        width: Math.min(implicitWidth, parent.width / 2)
+                                        horizontalAlignment: Text.AlignRight
+                                        elide: Text.ElideRight
+
+                                        HoverHandler {
+                                            id: dashboardValueHover
+                                        }
+
+                                        PlainToolTip {
+                                            visible: dashboardRowValue.truncated && dashboardValueHover.hovered
+                                            plainText: dashboardRowValue.text
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+
+                    ColumnLayout {
+                        visible: applet.presentedProviderData !== null
+                        Layout.fillWidth: true
+                        spacing: 0
+
+                        Kirigami.Separator {
+                            Layout.fillWidth: true
+                        }
+
+                        Repeater {
+                            id: providerActionRows
+
+                            model: applet.presentedProviderData ? applet.actionRows(applet.selectedProviderData) : []
+
+                            delegate: ColumnLayout {
+                                required property var modelData
+
+                                Layout.fillWidth: true
+                                spacing: 0
+
+                                Kirigami.Separator {
+                                    id: providerActionGroupSeparator
+
+                                    visible: modelData.separatorBefore === true
+                                    Layout.fillWidth: true
+                                    Layout.topMargin: Kirigami.Units.smallSpacing / 2
+                                    Layout.bottomMargin: Kirigami.Units.smallSpacing / 2
+                                }
+
+                                Controls.ItemDelegate {
+                                    Layout.fillWidth: true
+                                    leftPadding: Kirigami.Units.smallSpacing
+                                    rightPadding: Kirigami.Units.smallSpacing
+                                    text: modelData.title
+                                    icon.name: modelData.icon
+                                    enabled: modelData.enabled
+                                    onClicked: applet.performAction(modelData)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

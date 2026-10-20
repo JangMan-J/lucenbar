@@ -1,0 +1,197 @@
+.pragma library
+.import "ProviderNormalizer.js" as Normalizer
+
+var percentMode = "percent";
+var paceMode = "pace";
+var bothMode = "both";
+var resetTimeMode = "resetTime";
+var runOutMode = "runOut";
+
+function safeMode(value) {
+    var mode = String(value || percentMode);
+    if (mode === percentMode || mode === paceMode || mode === bothMode || mode === resetTimeMode || mode === runOutMode) {
+        return mode;
+    }
+    return percentMode;
+}
+
+function safeLane(value) {
+    return value === "primary" || value === "secondary" || value === "tertiary" ? value : "auto";
+}
+
+function hasFiniteNumber(value) {
+    return typeof value === "number" && isFinite(value);
+}
+
+function rowHasPercent(row) {
+    return row !== null && row !== undefined && row.hasPercent === true && hasFiniteNumber(row.usedPercent) && hasFiniteNumber(row.leftPercent);
+}
+
+function rowHasPace(row) {
+    return Normalizer.canPresentQuotaDetails(row) && hasFiniteNumber(row.pacePercent) && row.pacePercent >= 0;
+}
+
+function rowHasReset(row) {
+    if (!Normalizer.canPresentQuotaDetails(row)) {
+        return false;
+    }
+    return (typeof row.resetsAt === "string" && row.resetsAt.trim().length > 0) || (typeof row.resetDescription === "string" && row.resetDescription.trim().length > 0) || (typeof row.reset === "string" && row.reset.trim().length > 0);
+}
+
+function rowHasRunOut(row) {
+    return Normalizer.canPresentQuotaDetails(row) && row.paceOnTop === false && hasFiniteNumber(row.paceEtaSeconds) && row.paceEtaSeconds > 0;
+}
+
+function rowSupportsMode(row, value) {
+    var mode = safeMode(value);
+    switch (mode) {
+    case paceMode:
+        return rowHasPace(row);
+    case bothMode:
+        return rowHasPercent(row) || rowHasPace(row);
+    case resetTimeMode:
+        return rowHasReset(row);
+    case runOutMode:
+        return rowHasRunOut(row);
+    default:
+        return rowHasPercent(row);
+    }
+}
+
+// Inputs are normalized usage rows and a canonical provider key. QML supplies
+// the localized label; this module only constructs and orders quota candidates.
+function candidateRows(rows, providerKey, providerCost, includedPlanLabel) {
+    if (!rows || rows.length === 0) {
+        return [];
+    }
+    var primary = rowForLane(rows, "primary");
+    var secondary = rowForLane(rows, "secondary");
+    var tertiary = rowForLane(rows, "tertiary");
+    var preferred = [];
+    if (providerKey === "factory") {
+        appendUniqueRow(preferred, secondary);
+        appendUniqueRow(preferred, primary);
+    } else if (providerKey === "perplexity" && primary && primary.hasPercent
+            && primary.leftPercent <= 0) {
+        appendUniqueRow(preferred, secondary);
+        appendUniqueRow(preferred, tertiary);
+        appendUniqueRow(preferred, primary);
+    } else {
+        appendUniqueRow(preferred, primary);
+        appendUniqueRow(preferred, secondary);
+        appendUniqueRow(preferred, tertiary);
+    }
+    if (providerKey === "cursor" && primary && primary.hasPercent && primary.leftPercent <= 0
+            && providerCost && providerCost.percentUsed >= 0) {
+        var used = Math.max(0, Math.min(100, Number(providerCost.percentUsed)));
+        preferred.unshift({
+            lane: "providerCost",
+            label: includedPlanLabel,
+            hasPercent: true,
+            usedPercent: used,
+            leftPercent: Math.max(0, Math.min(100, 100 - used)),
+            pacePercent: -1,
+            paceOnTop: true,
+            reset: "",
+            pace: ""
+        });
+    }
+    for (var i = 0; i < rows.length; i++) {
+        appendUniqueRow(preferred, rows[i]);
+    }
+    return preferred;
+}
+
+function rowForLane(rows, lane) {
+    for (var i = 0; i < rows.length; i++) {
+        if (rows[i] && rows[i].lane === lane) {
+            return rows[i];
+        }
+    }
+    return null;
+}
+
+function appendUniqueRow(rows, row) {
+    if (row && rows.indexOf(row) === -1) {
+        rows.push(row);
+    }
+}
+
+// The caller supplies provider-specific preference order. This function only
+// decides whether a row carries the data required by the selected mode.
+function rowForMode(rows, value, laneValue) {
+    if (!Array.isArray(rows)) {
+        return null;
+    }
+    var lane = safeLane(laneValue);
+    if (lane !== "auto") {
+        rows = rows.filter(function(row) { return row && row.lane === lane; });
+    }
+    var mode = safeMode(value);
+    if (mode === bothMode) {
+        for (var i = 0; i < rows.length; i++) {
+            if (rowHasPercent(rows[i]) && rowHasPace(rows[i])) {
+                return rows[i];
+            }
+        }
+    }
+    for (var j = 0; j < rows.length; j++) {
+        if (rowSupportsMode(rows[j], mode)) {
+            return rows[j];
+        }
+    }
+    return null;
+}
+
+// Meter positions follow named lanes, not the provider's text preference or
+// current consumption. Providers without those lanes keep their single fallback.
+function meterRows(rows, laneValue) {
+    var lane = safeLane(laneValue);
+    if (lane !== "auto") {
+        var selected = rowForMode(rows, percentMode, lane);
+        return selected ? [selected] : [];
+    }
+    var result = [];
+    var primary = rowForMode(rows, percentMode, "primary");
+    var secondary = rowForMode(rows, percentMode, "secondary");
+    if (primary) result.push(primary);
+    if (secondary) result.push(secondary);
+    if (result.length === 0) {
+        var fallback = rowForMode(rows, percentMode);
+        if (fallback) result.push(fallback);
+    }
+    return result;
+}
+
+// Overview rows draw every lane meter. candidateRows leads with Cursor's
+// included plan only after its total quota is exhausted, so keep that figure too.
+function overviewMeterRows(candidates) {
+    var rows = meterRows(candidates, "auto");
+    var first = Array.isArray(candidates) ? candidates[0] : null;
+    if (first && first.lane === "providerCost" && rows.indexOf(first) === -1) {
+        rows.unshift(first);
+    }
+    // Local change: the Overview draws every quota window, so named extra
+    // windows (such as Claude's "Fable only") and a tertiary lane follow the
+    // primary/secondary pair instead of being dropped.
+    if (Array.isArray(candidates)) {
+        for (var i = 0; i < candidates.length; i++) {
+            var row = candidates[i];
+            if (row && (row.lane === "extra" || row.lane === "tertiary")
+                    && rowHasPercent(row) && rows.indexOf(row) === -1) {
+                rows.push(row);
+            }
+        }
+    }
+    return rows;
+}
+
+// Forecast ETA is a duration observed with one usage snapshot, not an absolute
+// timestamp. Advance it from that observation without triggering another CLI run.
+function remainingSeconds(durationSeconds, observedAtMs, nowMs) {
+    if (!hasFiniteNumber(durationSeconds) || durationSeconds < 0 || !hasFiniteNumber(observedAtMs) || !hasFiniteNumber(nowMs)) {
+        return 0;
+    }
+    var elapsedSeconds = Math.max(0, (nowMs - observedAtMs) / 1000);
+    return Math.max(0, durationSeconds - elapsedSeconds);
+}

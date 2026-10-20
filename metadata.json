@@ -1,0 +1,29 @@
+{
+  "KPackageStructure": "Plasma/Applet",
+  "KPlugin": {
+    "Authors": [
+      {
+        "Name": "JangMan-J",
+        "Email": "278475828+JangMan-J@users.noreply.github.com"
+      },
+      {
+        "Name": "Lucenx9 (original CodexBar Plasma)"
+      }
+    ],
+    "Category": "System Information",
+    "Description": "AI provider quotas from the CodexBar CLI in your Plasma panel, with threshold notifications. A trimmed fork of CodexBar Plasma by Lucenx9.",
+    "Description[de]": "KI-Anbieterkontingente aus der CodexBar-CLI in der Plasma-Kontrollleiste, mit Benachrichtigungen bei Schwellenwerten. Eine schlanke Abspaltung von CodexBar Plasma von Lucenx9.",
+    "Description[es]": "Cuotas de proveedores de IA desde la CLI de CodexBar en el panel de Plasma, con notificaciones por umbral. Una bifurcación reducida de CodexBar Plasma de Lucenx9.",
+    "Description[fr]": "Quotas des fournisseurs d'IA issus de la CLI CodexBar dans le panneau Plasma, avec notifications de seuil. Une version allégée de CodexBar Plasma de Lucenx9.",
+    "Description[it]": "Quote dei provider di IA dalla CLI CodexBar nel pannello di Plasma, con notifiche alle soglie. Un fork ridotto di CodexBar Plasma di Lucenx9.",
+    "Description[pt_BR]": "Cotas de provedores de IA da CLI do CodexBar no painel do Plasma, com notificações por limite. Um fork enxuto do CodexBar Plasma de Lucenx9.",
+    "Icon": "/icons/lucenbar.svg",
+    "Id": "io.github.jangmanj.lucenbarlite",
+    "License": "MIT",
+    "Name": "LucenBar Lite",
+    "Version": "1.0.0",
+    "Website": "https://github.com/JangMan-J/lucenbar",
+    "BugReportUrl": "https://github.com/JangMan-J/lucenbar/issues"
+  },
+  "X-Plasma-API-Minimum-Version": "6.0"
+}
