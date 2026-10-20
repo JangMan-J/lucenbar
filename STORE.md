@@ -1,5 +1,7 @@
 # KDE Store listing (store.kde.org → Plasma 6 Extensions → Plasma 6 Applets)
 
+**Live listing:** https://store.kde.org/p/2379903/
+
 **Name:** LucenBar Lite
 
 **Category:** Plasma 6 Applets

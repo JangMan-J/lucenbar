@@ -38,8 +38,8 @@ diagnostics, multiple accounts, AI insights), use the original.
 
 ## Install
 
-From the KDE Store: **Add Widgets → Get New Widgets → Download New Plasma
-Widgets**, search for **LucenBar Lite**.
+From the [KDE Store](https://store.kde.org/p/2379903/): **Add Widgets → Get New
+Widgets → Download New Plasma Widgets**, search for **LucenBar Lite**.
 
 From a package file, download `lucenbar-lite-<version>.plasmoid` from
 [Releases](https://github.com/JangMan-J/lucenbar/releases) and run:
