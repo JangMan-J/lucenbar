@@ -27,13 +27,6 @@ diagnostics, multiple accounts, AI insights), use the original.
   and desktop notifications when a quota crosses a threshold, will run out
   before it resets, or resets.
 
-## What was removed from CodexBar Plasma
-
-Diagnostics, Usage & Spend, Sessions, AI Insights, the support report, usage
-sharing, multi-account switching, provider status and incident polling, and the
-widget self-updater. Settings are reduced to three pages: Providers, Display,
-and Notifications.
-
 ## Requirements
 
 - KDE Plasma 6
