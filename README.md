@@ -72,7 +72,9 @@ MIT. See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
   [supporting Lucenx9 on Ko-fi](https://ko-fi.com/lucenx9).
 - CodexBar CLI and most provider icons:
   [CodexBar](https://github.com/steipete/CodexBar) by Peter Steinberger.
-- Poe icon: SVG Stack, CC BY 4.0.
+- Poe provider icon: adapted (recolored for the theme) from
+  ["Poe App Logo"](https://svgstack.com/icon/poe-app-logo-3748) by SVG Stack,
+  licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 - LucenBar icon: generated with Recraft AI; the original with its C2PA
   provenance manifest is `docs/icon-source-12-segmented-reserve.svg`.
 

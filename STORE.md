@@ -36,7 +36,7 @@ LucenBar Lite shows how much of your AI provider quota you have left, directly i
 
 This fork removes those features and adds rings and logo meters, drag-to-reorder, and native login for Antigravity, Grok, and Radius. It is not maintained or endorsed by Lucenx9 or the CodexBar authors; please report problems at https://github.com/JangMan-J/lucenbar/issues, not upstream.
 
-CodexBar CLI and most provider icons: CodexBar by Peter Steinberger (MIT). Poe icon: SVG Stack (CC BY 4.0).
+CodexBar CLI and most provider icons: CodexBar by Peter Steinberger (MIT). Poe provider icon: adapted (recolored) from "Poe App Logo" by SVG Stack (https://svgstack.com/icon/poe-app-logo-3748), licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
 
 ## Changelog (1.0.0)
 
