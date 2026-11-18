@@ -245,6 +245,30 @@ def pkce_callback_server(host, port, callback_path, expected_state, finish):
     return result_box["code"]
 
 
+def wait_for_login_code(fifo_path, deadline, finish):
+    """Wait for a pasted authorization code on the session input FIFO."""
+    try:
+        fifo = os.open(fifo_path, os.O_RDONLY | os.O_NONBLOCK)
+    except OSError as exc:
+        finish(1, f"Could not open {fifo_path}: {exc}")
+        return None
+    try:
+        while time.time() < deadline:
+            try:
+                data = os.read(fifo, 4096)
+            except OSError:
+                data = b""
+            if data:
+                text = data.decode("utf-8", "replace").strip()
+                if text:
+                    return text.splitlines()[0].strip()
+            time.sleep(0.5)
+    finally:
+        os.close(fifo)
+    finish(1, "Timed out waiting for the pasted authorization code")
+    return None
+
+
 def radius_runner(directory):
     """Run the Radius PKCE + 127.0.0.1:1456/oauth/callback login flow."""
     os.setsid()
@@ -330,7 +354,7 @@ def radius_runner(directory):
 
 
 def antigravity_runner(directory):
-    """Run the Antigravity Google OAuth PKCE + localhost:51121/oauth-callback flow."""
+    """Run the Antigravity Google OAuth PKCE flow with the agy-hosted callback page."""
     os.setsid()
     log_path = os.path.join(directory, "log")
     exit_path = os.path.join(directory, "exit")
@@ -349,11 +373,11 @@ def antigravity_runner(directory):
     # not confidential), as used by pi-antigravity (MIT, Rahul Arya) and pi-ai.
     client_id = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
     client_secret = "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"
-    redirect_uri = "http://localhost:51121/oauth-callback"
+    redirect_uri = "https://antigravity.google/oauth-callback"
     scopes = " ".join(
         f"https://www.googleapis.com/auth/{s}"
         for s in ("aicode", "cloud-platform", "userinfo.email", "userinfo.profile", "cclog", "experimentsandconfigs")
-    )
+    ) + " openid"
     verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode("ascii")
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).rstrip(b"=").decode("ascii")
     state = str(uuid.uuid4())
@@ -368,11 +392,12 @@ def antigravity_runner(directory):
         "access_type": "offline",
         "prompt": "consent",
     })
-    authorize_url = f"https://accounts.google.com/o/oauth2/v2/auth?{params}"
+    authorize_url = f"https://accounts.google.com/o/oauth2/auth?{params}"
     with open(log_path, "wb") as log:
         log.write(f"Open {authorize_url}\n".encode("utf-8"))
+        log.write(b"The antigravity.google page will show a code; paste the authorization code here.\n")
 
-    code = pkce_callback_server("127.0.0.1", 51121, "/oauth-callback", state, finish)
+    code = wait_for_login_code(os.path.join(directory, "input"), time.time() + 300, finish)
     if not code:
         return
 
@@ -403,7 +428,7 @@ def antigravity_runner(directory):
         email = ""
         try:
             u_req = urllib.request.Request(
-                "https://www.googleapis.com/oauth2/v1/userinfo?alt=json",
+                "https://www.googleapis.com/oauth2/v2/userinfo?alt=json",
                 headers={"Authorization": f"Bearer {access}", "User-Agent": USER_AGENT},
             )
             with urllib.request.urlopen(u_req, timeout=10) as u_resp:
